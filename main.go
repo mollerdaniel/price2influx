@@ -21,6 +21,7 @@ var influxtoken = flag.String("influxtoken", "my-token", "InfluxDB token")
 const (
 	InfluxOrg    = "my-org"
 	InfluxBucket = "my-bucket"
+	Locale       = "Europe/Stockholm"
 )
 
 // {"SEK_per_kWh":0.4931,"EUR_per_kWh":0.04295,"EXR":11.480681,"time_start":"2025-01-29T00:00:00+01:00","time_end":"2025-01-29T01:00:00+01:00"}
@@ -35,9 +36,10 @@ type Price struct {
 type Prices []Price
 
 func createElprisURL() string {
+	loc, _ := time.LoadLocation(Locale)
 	return fmt.Sprintf("https://www.elprisetjustnu.se/api/v1/prices/%d/%s_SE3.json",
-		time.Now().Year(),
-		time.Now().Format("01-02"),
+		time.Now().In(loc).Year(),
+		time.Now().In(loc).Format("01-02"),
 	)
 }
 
@@ -92,7 +94,7 @@ func main() {
 	go func() {
 		defer wg.Done()
 		for {
-			loc, err := time.LoadLocation("Europe/Stockholm")
+			loc, err := time.LoadLocation(Locale)
 			if err != nil {
 				log.Fatal(err)
 			}
