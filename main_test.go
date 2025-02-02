@@ -202,21 +202,27 @@ func TestPriceLoader(t *testing.T) {
 	go func() {
 		pc.PriceLoader()
 	}()
-	for {
-		time.Sleep(time.Millisecond * 500)
-		pc.mutex.Lock()
-		if len(pc.prices) > 0 {
-			fmt.Println(pc.prices[0].SEKPerkWh)
-			// First value for the newly loaded day should be 0.48455
-			if pc.prices[0].SEKPerkWh == 0.48455 {
-				pc.mutex.Unlock()
-				break
+
+	// run a verification loop on the loaded prices
+	go func() {
+		for {
+			time.Sleep(time.Millisecond * 500)
+			pc.mutex.Lock()
+			if len(pc.prices) > 0 {
+				fmt.Println(pc.prices[0].SEKPerkWh)
+				// First value for the newly loaded day should be 0.48455
+				if pc.prices[0].SEKPerkWh == 0.48455 {
+					pc.mutex.Unlock()
+					break
+				}
 			}
+			pc.mutex.Unlock()
 		}
-		pc.mutex.Unlock()
-	}
-	close(done)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		close(done)
+	}()
+
+	// wait for either a timeout or a successful signal
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 	select {
 	case <-ctx.Done():
