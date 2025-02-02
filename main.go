@@ -97,7 +97,7 @@ func (p *PriceClient) LoadPrices() error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	p.prices = prices
-	fmt.Println("Prices loaded from elprisetjust.nu")
+	fmt.Println("Prices loaded from elprisetjustnu.se")
 	return nil
 }
 
