@@ -1,4 +1,4 @@
-module mymodule
+module price2influx
 
 go 1.20
 

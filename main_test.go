@@ -54,10 +54,11 @@ func TestMidnightLoading(t *testing.T) {
 	}))
 	defer ts2.Close()
 
+	clocksource = fakec.Now
 	pc := PriceClient{
-		baseURL:     ts1.URL,
-		client:      ts1.Client(),
-		clocksource: fakec.Now,
+		baseURL:    ts1.URL,
+		client:     ts1.Client(),
+		priceclass: "SE3",
 	}
 	err = pc.LoadPrices()
 	if err != nil {
@@ -163,9 +164,8 @@ func TestLoadPrices(t *testing.T) {
 			}))
 			defer ts.Close()
 			pc := PriceClient{
-				baseURL:     ts.URL,
-				client:      ts.Client(),
-				clocksource: time.Now,
+				baseURL: ts.URL,
+				client:  ts.Client(),
 			}
 			err := pc.LoadPrices()
 			if (err != nil) != tc.wantErr {
@@ -191,14 +191,14 @@ func TestPriceLoader(t *testing.T) {
 	fakec := fakeclock{
 		curtime: time.Date(2025, 2, 2, 23, 59, 59, 0, loc),
 	}
+	clocksource = fakec.Now
 	pc := PriceClient{
-		baseURL:     ts.URL,
-		client:      ts.Client(),
-		clocksource: fakec.Now,
+		baseURL: ts.URL,
+		client:  ts.Client(),
 	}
 	done := make(chan struct{})
 
-	// this should take around 2s to reload next days values, or else the timeout will hit after 5s
+	// this should take around 2s to reload next days values, if it fails the timeout of 5s will fail the test
 	go func() {
 		pc.PriceLoader()
 	}()
