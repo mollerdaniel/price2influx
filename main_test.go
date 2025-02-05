@@ -25,11 +25,11 @@ const (
 )
 
 func TestMidnightLoading(t *testing.T) {
-	asdf, err := time.LoadLocation("America/Aruba")
+	arubaloc, err := time.LoadLocation(Locale)
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.Local = asdf
+	time.Local = arubaloc
 	loc, err := time.LoadLocation(Locale)
 	if err != nil {
 		t.Fatal(err)
@@ -54,15 +54,15 @@ func TestMidnightLoading(t *testing.T) {
 	}))
 	defer ts2.Close()
 
-	clocksource = fakec.Now
+	clockSourceNow = fakec.Now
 	pc := PriceClient{
 		baseURL:    ts1.URL,
 		client:     ts1.Client(),
-		priceclass: "SE3",
+		priceClass: "SE3",
 	}
 	err = pc.LoadPrices()
 	if err != nil {
-		t.Errorf("LoadPrices() error = %v, wantErr nil", err)
+		t.Errorf("LoadPrices() error got = %v, want = nil", err)
 		return
 	}
 
@@ -72,7 +72,7 @@ func TestMidnightLoading(t *testing.T) {
 
 	err = pc.LoadPrices()
 	if err != nil {
-		t.Errorf("LoadPrices() error = %v, wantErr nil", err)
+		t.Errorf("LoadPrices() error got = %v, want = nil", err)
 		return
 	}
 }
@@ -191,7 +191,7 @@ func TestPriceLoader(t *testing.T) {
 	fakec := fakeclock{
 		curtime: time.Date(2025, 2, 2, 23, 59, 59, 0, loc),
 	}
-	clocksource = fakec.Now
+	clockSourceNow = fakec.Now
 	pc := PriceClient{
 		baseURL: ts.URL,
 		client:  ts.Client(),
@@ -207,16 +207,16 @@ func TestPriceLoader(t *testing.T) {
 	go func() {
 		for {
 			time.Sleep(time.Millisecond * 500)
-			pc.mutex.Lock()
+			pc.mu.Lock()
 			if len(pc.prices) > 0 {
 				fmt.Println(pc.prices[0].SEKPerkWh)
 				// First value for the newly loaded day should be 0.48455
 				if pc.prices[0].SEKPerkWh == 0.48455 {
-					pc.mutex.Unlock()
+					pc.mu.Unlock()
 					break
 				}
 			}
-			pc.mutex.Unlock()
+			pc.mu.Unlock()
 		}
 		close(done)
 	}()
