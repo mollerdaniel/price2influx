@@ -15,16 +15,17 @@ import (
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
 
-var priceclasses = []string{"SE1", "SE2", "SE3", "SE4"}
+var priceClasses = []string{"SE1", "SE2", "SE3", "SE4"}
 
-var influxaddr = flag.String("influxaddr", "http://localhost:8086", "InfluxDB address")
-var influxtoken = flag.String("influxtoken", "my-token", "InfluxDB token")
+var influxAddr = flag.String("influxaddr", "http://localhost:8086", "InfluxDB address")
+var influxToken = flag.String("influxtoken", "my-token", "InfluxDB token")
 var influxInterval = flag.Duration("influxupdaterate", time.Second*10, "InfluxDB datapoint injection rate")
 var influxOrg = flag.String("influxorg", "my-org", "InfluxDB Organisation")
 var influxBucket = flag.String("influxbucket", "my-bucket", "InfluxDB bucket")
-var priceclass = flag.String("priceclass", "SE3", fmt.Sprintf("Priceclass, one of: %v", priceclasses))
+var priceClass = flag.String("priceclass", "SE3", fmt.Sprintf("Priceclass, one of: %v", priceClasses))
 
-var clocksource = time.Now
+var clockSourceNow = time.Now
+var locale *time.Location
 
 const (
 	Locale  = "Europe/Stockholm"
@@ -44,39 +45,35 @@ type Prices []Price
 func NewPriceClient(priceclass string) *PriceClient {
 	return &PriceClient{
 		baseURL:    BaseURL,
-		priceclass: priceclass,
+		priceClass: priceclass,
 		client:     &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
 type PriceClient struct {
 	baseURL    string
-	priceclass string
+	priceClass string
 	client     *http.Client
-	prices     Prices
-	mutex      sync.Mutex
+
+	mu     sync.Mutex
+	prices Prices
 }
 
 func (p *PriceClient) apiURL() string {
-	loc, _ := time.LoadLocation(Locale)
-	now := p.Now()
+	now := clockSourceNow()
 	return fmt.Sprintf("%s/api/v1/prices/%d/%s_%s.json",
 		p.baseURL,
-		now.In(loc).Year(),
-		now.In(loc).Format("01-02"),
-		p.priceclass,
+		now.In(locale).Year(),
+		now.In(locale).Format("01-02"),
+		p.priceClass,
 	)
-}
-
-func (p *PriceClient) Now() time.Time {
-	return clocksource()
 }
 
 // CurrentPriceSEK returns the price in SEK at this given time.
 func (p *PriceClient) CurrentPriceSEK() (float64, error) {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	now := p.Now()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	now := clockSourceNow()
 	for _, price := range p.prices {
 		if price.TimeStart.Before(now) && price.TimeEnd.After(now) {
 			return price.SEKPerkWh, nil
@@ -101,8 +98,8 @@ func (p *PriceClient) LoadPrices() error {
 	if err != nil {
 		return fmt.Errorf("error parsing json: %v", err)
 	}
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.prices = prices
 	fmt.Println("Prices loaded from", BaseURL)
 	return nil
@@ -110,18 +107,14 @@ func (p *PriceClient) LoadPrices() error {
 
 // PriceLoader handles the refresh of prices from the API at midnight.
 func (p *PriceClient) PriceLoader() {
-	loc, err := time.LoadLocation(Locale)
-	if err != nil {
-		log.Fatal(err)
-	}
 	for {
-		now := p.Now()
-		year, month, day := now.In(loc).Date()
-		t := time.Date(year, month, day, 0, 0, 0, 0, loc).AddDate(0, 0, 1).Add(time.Second)
+		now := clockSourceNow()
+		year, month, day := now.In(locale).Date()
+		t := time.Date(year, month, day, 0, 0, 0, 0, locale).AddDate(0, 0, 1).Add(time.Second)
 		fmt.Println("Time for price refresh:", t)
-		<-time.After(t.Sub(p.Now()))
+		<-time.After(time.Until(t))
 		fmt.Println("Fetching new prices from the API")
-		err = p.LoadPrices()
+		err := p.LoadPrices()
 		if err != nil {
 			fmt.Println("Error loading prices", err)
 			continue
@@ -129,14 +122,22 @@ func (p *PriceClient) PriceLoader() {
 	}
 }
 
+func init() {
+	loc, err := time.LoadLocation(Locale)
+	if err != nil {
+		log.Fatal(err)
+	}
+	locale = loc
+}
+
 func main() {
 	flag.Parse()
-	if !slices.Contains(priceclasses, *priceclass) {
-		log.Fatalf("Priceclass must be one of %v", priceclasses)
+	if !slices.Contains(priceClasses, *priceClass) {
+		log.Fatalf("Priceclass must be one of %v", priceClasses)
 	}
 
 	wg := sync.WaitGroup{}
-	priceClient := NewPriceClient(*priceclass)
+	priceClient := NewPriceClient(*priceClass)
 
 	// Load the prices once
 	err := priceClient.LoadPrices()
@@ -150,9 +151,8 @@ func main() {
 		priceClient.PriceLoader()
 	}()
 
-	client := influxdb2.NewClient(*influxaddr, *influxtoken)
+	client := influxdb2.NewClient(*influxAddr, *influxToken)
 	writeAPI := client.WriteAPIBlocking(*influxOrg, *influxBucket)
-
 	ticker := time.NewTicker(*influxInterval)
 	wg.Add(1)
 	go func() {
